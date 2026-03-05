@@ -42,28 +42,71 @@ Body example:
 
 ## Local setup
 
-1. Copy envs:
+1. Prerequisites:
+
+```bash
+docker --version
+docker compose version
+go version
+psql --version
+awslocal --version
+```
+
+2. Configure environment variables:
 
 ```bash
 cp .env.example .env
 ```
 
-2. Start the full stack:
+The `make` targets load `.env` automatically. Make sure `DATABASE_URL` exists in this file.
+
+3. Start all local dependencies:
+
+```bash
+make local-up
+```
+
+4. Run database migrations and seed:
+
+```bash
+make migrate
+make seed
+```
+
+5. Build and deploy Lambda to LocalStack:
+
+```bash
+make localstack-deploy
+```
+
+6. Or run everything in one command:
 
 ```bash
 make run
 ```
 
-3. Stop the full stack:
+7. Stop local environment:
 
 ```bash
 make stop
 ```
 
-4. Run tests:
+## Troubleshooting local run
 
-```bash
-make test
+If you get this error:
+
+```text
+./scripts/migrate.sh: line 4: DATABASE_URL: DATABASE_URL must be set
+```
+
+Check:
+
+1. You are running `make` from the project root.
+2. The `.env` file exists.
+3. The `.env` has `DATABASE_URL`, for example:
+
+```env
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/ondefarma?sslmode=disable
 ```
 
 ## Developer commands
