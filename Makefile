@@ -3,7 +3,7 @@ SHELL := /bin/sh
 -include .env
 export
 
-.PHONY: fmt test tidy build-lambda migrate seed db-reset local-up local-down sqlc-generate localstack-deploy
+.PHONY: fmt test tidy build-lambda migrate seed db-reset local-up local-down sqlc-generate localstack-deploy run stop
 
 fmt:
 	gofmt -w $$(find . -type f -name '*.go' -not -path './vendor/*')
@@ -43,3 +43,9 @@ local-down:
 localstack-deploy: build-lambda
 	chmod +x scripts/deploy_localstack.sh
 	./scripts/deploy_localstack.sh
+
+run: local-up migrate seed localstack-deploy
+	@echo "Project started locally with Postgres + LocalStack + Lambda deployment."
+
+stop:
+	docker compose down -v

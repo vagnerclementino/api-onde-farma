@@ -48,27 +48,19 @@ Body example:
 cp .env.example .env
 ```
 
-2. Start dependencies:
+2. Start the full stack:
 
 ```bash
-make local-up
+make run
 ```
 
-3. Apply DB migrations and seed from CSV:
+3. Stop the full stack:
 
 ```bash
-make migrate
-make seed
+make stop
 ```
 
-4. Build lambda and deploy to LocalStack:
-
-```bash
-make build-lambda
-make localstack-deploy
-```
-
-5. Run tests:
+4. Run tests:
 
 ```bash
 make test
@@ -83,6 +75,12 @@ make test
 - `make seed`
 - `make db-reset`
 - `make sqlc-generate`
+- `make run`
+- `make stop`
+
+## OpenAPI
+
+The API contract is documented in [`openapi.yaml`](openapi.yaml).
 
 ## ADR
 
