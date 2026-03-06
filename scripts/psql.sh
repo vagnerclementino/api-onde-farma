@@ -5,4 +5,4 @@ if command -v psql >/dev/null 2>&1; then
   exec psql "$@"
 fi
 
-exec docker compose exec -T postgres psql "$@"
+exec docker compose exec -T -w /workspace postgres psql "$@"

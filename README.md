@@ -125,6 +125,20 @@ make local-up
 
 Then run `make run` again. The migration/seed commands now fallback to `docker compose exec postgres psql` when local `psql` is not installed.
 
+If you get this error:
+
+```text
+src/data/pharmacies.csv: No such file or directory
+```
+
+Recreate containers to apply updated `docker-compose` mounts:
+
+```bash
+make stop
+make local-up
+make run
+```
+
 ## Developer commands
 
 - `make fmt`
