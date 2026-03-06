@@ -49,7 +49,7 @@ docker --version
 docker compose version
 go version
 psql --version
-awslocal --version
+aws --version
 ```
 
 `psql` local is optional. If not installed, the project uses `psql` inside the `postgres` container.
