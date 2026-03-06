@@ -52,6 +52,8 @@ psql --version
 awslocal --version
 ```
 
+`psql` local is optional. If not installed, the project uses `psql` inside the `postgres` container.
+
 2. Configure environment variables:
 
 ```bash
@@ -108,6 +110,20 @@ Check:
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/ondefarma?sslmode=disable
 ```
+
+If you get this error:
+
+```text
+./scripts/migrate.sh: line X: psql: command not found
+```
+
+Run:
+
+```bash
+make local-up
+```
+
+Then run `make run` again. The migration/seed commands now fallback to `docker compose exec postgres psql` when local `psql` is not installed.
 
 ## Developer commands
 

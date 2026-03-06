@@ -50,7 +50,7 @@ seed: ##@database Popula o banco com dados iniciais
 	./scripts/seed_csv.sh
 
 db-reset: ##@database Reseta schema e reaplica migrate + seed
-	psql "$(DATABASE_URL)" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+	sh ./scripts/psql.sh "$(DATABASE_URL)" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 	$(MAKE) migrate
 	$(MAKE) seed
 
