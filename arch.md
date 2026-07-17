@@ -1,28 +1,54 @@
 # Arquitetura de Projeto Go para AWS Lambda (REST API)
 
-Este documento define os padrões arquiteturais, diretórios e boas práticas para o desenvolvimento de APIs REST escritas em Go rodando sobre AWS Lambda (integradas ao API Gateway).
+Este documento define os padrões arquiteturais, diretórios e melhores práticas para o desenvolvimento de APIs REST escritas em Go rodando sobre AWS Lambda (integradas ao API Gateway).
 
 ---
 
-## 1. Diretrizes de Arquitetura
+## 1. O que é Screaming Architecture?
 
-### 1.1 Screaming Architecture (Coesão por Domínio)
-A estrutura de diretórios deve deixar evidente quais são as regras de negócio e domínios da aplicação (ex: `pharmacy`, `user`, `order`), em vez de focar em termos de frameworks ou camadas puras.
-* Cada domínio deve possuir seu próprio pacote flat dentro de `internal/` (ex: `internal/pharmacy/`).
-* **Não utilize camadas aninhadas da arquitetura hexagonal** (como `domain/`, `application/`, `adapters/`). Coloque o código do domínio diretamente na raiz do pacote de domínio.
+O termo **Screaming Architecture** (Arquitetura Gritante), cunhado por Robert C. Martin (Uncle Bob), prega que a estrutura de pastas e a organização de código do seu projeto devem **gritar o seu domínio de negócio** (o propósito da aplicação), e não as ferramentas técnicas, frameworks ou banco de dados que ele utiliza.
 
-### 1.2 Roteamento Standard & Desacoplamento da AWS
-Para evitar o acoplamento do código de negócio aos tipos da AWS (como `events.APIGatewayV2HTTPRequest`), o projeto deve utilizar a biblioteca padrão do Go (`net/http`) para o roteamento e tratamento de requisições:
-* Os handlers HTTP devem usar a assinatura padrão `func(w http.ResponseWriter, r *http.Request)`.
-* Utilize o roteador nativo do Go (`http.ServeMux`) com suporte a métodos e caminhos dinâmicos (disponível a partir do Go 1.22).
-* Toda a tradução dos eventos do API Gateway para requisições `net/http` deve ocorrer apenas no ponto de entrada da Lambda (`cmd/lambda/main.go`), utilizando a biblioteca oficial `github.com/awslabs/aws-lambda-go-api-proxy/httpadapter`.
+Ao olhar a raiz de `/internal`, não devemos ver pastas como `controllers/`, `models/` ou `views/`. Em vez disso, devemos ver de imediato os domínios de negócio, como `pharmacy/`, `user/` ou `billing/`.
 
-### 1.3 Inicialização de Recursos
-* Lógica pesada de inicialização (leitura de variáveis de ambiente, criação de pools de banco de dados e conexões externas) deve ser executada na função `main()` do `cmd/lambda/main.go` (fora do loop do handler da Lambda) para otimizar os *warm starts* e reduzir o impacto de *cold starts*.
+### 1.1 Screaming Architecture Pura (Sem Hexagonal) em Go
+Muitas vezes, a tentativa de alinhar Screaming Architecture com Arquitetura Hexagonal (Ports and Adapters) introduz uma quantidade excessiva de subpastas (como `/domain`, `/application`, `/ports`, `/adapters/http`, `/adapters/repository`). 
+
+Em Go, a melhor prática para projetos de pequeno a médio porte é **manter os pacotes planos (flat)**. Isso significa que tudo que diz respeito ao domínio de Farmácia reside diretamente dentro de `internal/pharmacy/`, sem subpastas. O próprio nome dos arquivos dentro do pacote descreve sua responsabilidade (`handlers.go`, `models.go`, `repository.go`).
 
 ---
 
-## 2. Estrutura de Diretórios Proposta
+## 2. Melhores Práticas para AWS Lambda em Go
+
+Para obter a melhor performance, menor latência (cold starts reduzidos) e melhor aproveitamento financeiro na AWS, as seguintes práticas devem ser seguidas no desenvolvimento e compilação do código Go:
+
+### 2.1 Otimização de Cold Starts (Inicialização Eficiente)
+* **Warm-up Cache (Main):** Inicialize os recursos mais pesados — como leitura de variáveis de ambiente (`config.Load`), conexão com o banco de dados (`pgxpool.New`) e criação de clientes HTTP/AWS — na função `main()` do executável, **antes** de chamar `lambda.Start()`. A AWS reutiliza o ambiente de execução e as conexões globais criadas em `main` em chamadas quentes subsequentes (warm starts).
+* **Compilação Otimizada:** Utilize flags específicas de compilação no `go build` para remover tabelas de símbolos e informações de depuração desnecessárias, reduzindo o tamanho do binário final (e consequentemente o tempo de carregamento da Lambda):
+  ```bash
+  CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o build/bootstrap ./cmd/lambda
+  ```
+
+### 2.2 Escolha da Arquitetura (Graviton / ARM64)
+* Configure as funções Lambda na AWS para rodar em arquitetura **ARM64** (Graviton2/3). 
+* Compilar o executável com `GOARCH=arm64` permite que a aplicação utilize a infraestrutura Graviton da AWS, que oferece até **20% melhor desempenho** com um custo **20% menor** comparado à arquitetura x86_64 tradicional.
+
+### 2.3 Roteamento Standard & Desacoplamento via Proxy
+* **Decoupling:** Evite ler ou validar estruturas de dados exclusivas da AWS Lambda (`events.APIGatewayV2HTTPRequest`) dentro dos seus pacotes de domínio. Seus handlers devem ser escritos usando o padrão nativo `http.HandlerFunc` (`w http.ResponseWriter, r *http.Request`).
+* **AWS Lambda API Proxy:** Utilize a biblioteca oficial da AWS (`github.com/awslabs/aws-lambda-go-api-proxy`) apenas no ponto de entrada (`cmd/lambda/main.go`). Ela atua como um adaptador transparente, permitindo usar o roteador nativo `http.ServeMux` (Go 1.22+) ou frameworks como `chi`.
+* **Portabilidade:** Ao usar `http.HandlerFunc`, você pode testar handlers usando o pacote nativo `net/http/httptest` ou iniciar um servidor convencional (`cmd/server/main.go`) rodando localmente de forma simples, sem necessidade de simuladores como o LocalStack.
+
+### 2.4 Gerenciamento de Pools de Conexão (PostgreSQL)
+* Devido à natureza efêmera e ao auto-escalonamento rápido da AWS Lambda (onde cada requisição simultânea pode subir uma nova instância isolada), o banco de dados pode facilmente sofrer esgotamento de conexões se o pool não for controlado.
+* **Tamanho do Pool:** Defina o limite máximo de conexões por instância da Lambda para um valor bem baixo (ex: `MaxConns = 2` ou `MaxConns = 3` por pool).
+* **RDS Proxy:** Para ambientes de alta concorrência em produção, é altamente recomendada a utilização do **AWS RDS Proxy** à frente do banco PostgreSQL, permitindo que a AWS gerencie o pool de forma eficiente e centralizada.
+
+### 2.5 Logging Estruturado com `log/slog`
+* Utilize o pacote nativo `log/slog` (introduzido no Go 1.21) para emitir logs formatados em **JSON** (`slog.NewJSONHandler`). 
+* A AWS CloudWatch indexa nativamente formatos JSON, permitindo usar o CloudWatch Logs Insights para pesquisar registros de forma extremamente rápida através de chaves customizadas (ex: procurar logs por `request_id`, `cnpj` ou níveis específicos de erro).
+
+---
+
+## 3. Estrutura de Diretórios Proposta
 
 ```text
 api-onde-farma/
@@ -46,9 +72,9 @@ api-onde-farma/
 
 ---
 
-## 3. Padrão de Código Base
+## 4. Padrão de Código Base
 
-### 3.1 Ponto de Entrada da Lambda (`cmd/lambda/main.go`)
+### 4.1 Ponto de Entrada da Lambda (`cmd/lambda/main.go`)
 Conecta o roteador padrão do Go (`http.ServeMux`) ao ambiente de execução da AWS Lambda usando o proxy:
 
 ```go
@@ -96,7 +122,7 @@ func main() {
 }
 ```
 
-### 3.2 Registrando e Processando Rotas (`internal/pharmacy/handlers.go`)
+### 4.2 Registrando e Processando Rotas (`internal/pharmacy/handlers.go`)
 Escreva handlers HTTP comuns utilizando os padrões nativos do Go:
 
 ```go
@@ -140,7 +166,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-## 4. Vantagens Deste Modelo
+## 5. Vantagens Deste Modelo
 1. **Rápido Desenvolvimento Local:** Você pode testar e debugar rotas localmente escrevendo um arquivo `cmd/server/main.go` que execute `http.ListenAndServe(":8080", mux)` sem necessidade de emuladores Lambda complexos.
 2. **Alta Testabilidade:** Handlers HTTP padrões são facilmente testados via testes unitários usando o pacote padrão `net/http/httptest`.
 3. **Organização Clara:** Não há acoplamento exagerado de camadas ou excesso de interfaces. O código é focado no domínio de negócio.
