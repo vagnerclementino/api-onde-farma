@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS pharmacies;
+DROP TABLE IF EXISTS neighborhoods;
+DROP TABLE IF EXISTS cities;
+DROP TABLE IF EXISTS states;
